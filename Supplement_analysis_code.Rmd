@@ -1,0 +1,691 @@
+---
+title: "Supplement 5"
+author: "NHI"
+date: "20230327"
+output: html_document
+---
+
+```{r setup, eval=FALSE, include=FALSE}
+library("papaja")
+#library("citr")
+library("ggplot2")
+library("ggsci")
+library("dplyr")
+source("getresultsstudy1.R")
+path_to_outputs <- '.'
+#dfres <- gdata(PATH='~/projects/data/study1multiverse/results')
+#print('reading outcomeraw')
+#outcomeraw <- read.csv("~/projects/data/study1multiverse/datasets/outcome.csv", encoding="UTF-8", comment.char="#")
+#prepped_all <- read.csv("~/projects/data/study1multiverse/datasets/processed/study1/Handpicked/Alldata/2022-12-06_All_week04.csv", encoding="UTF-8", comment.char="#")
+#imputedraw_train <- read.csv("~/projects/data/study1multiverse/datasets/processed/study1/Handpicked/train/missfix/2022-12-06_All_week04-imputed.csv", encoding="UTF-8", comment.char="#")
+#imputedraw_test <- read.csv("~/projects/data/study1multiverse/datasets/processed/study1/Handpicked/test/missfix/2022-12-06_All_week04-imputed.csv", encoding="UTF-8", comment.char="#")
+#imputed_all <- rbind(imputedraw_train,imputedraw_test)
+
+# convinient functions: 
+my_ggsave <- function(graph,path_to_outputs,name,...){
+  optionsals <- list(...)
+  mywidth <- ifelse(is.null(optionsals['width'][[1]]),7,optionsals['width'][[1]])
+  myheight <- ifelse(is.null(optionsals['height'][[1]]),5,optionsals['height'][[1]])
+  for(output in c('.tiff','.png')){
+    ggsave(file.path(path_to_outputs,paste0(name,Sys.Date(),output)),plot=graph,width=mywidth,height=myheight,bg="white")
+    ggsave(file.path('./graphs/',paste0(name,Sys.Date(),output)),plot=graph,width=mywidth,height=myheight,bg="white")
+}
+}
+
+
+# Pre data processing 
+#  In numpy the standard deviation function ergo = standard deviation ergo sum((a-a.mean)**2)/(n) is used by default by numpy.
+# ergo we need to transform all the std variables 
+# We want the unbiased estimator, ergo with sum((a-a.mean)**2)/(n-1) so we reverse it. 
+#un_std_std <- function(x){
+#  return(
+#  sqrt(sum(
+#    (x-mean(x))^2)/length(x)))}
+#reverse_std <- function(x,orgn,ton){
+#  return(
+#    sqrt(
+#      (x^2)*orgn/(ton)
+#      ))}
+#test_std <- un_std_std(dfres$b.acc[1:10])
+#real_std <- sqrt(var(dfres$b.acc[1:10]))
+#mod_test_std <- reverse_std(test_std,10,9)
+#print(paste(test_std,real_std,mod_test_std,real_std-mod_test_std,test_std-real_std))
+#dfres <- dfres %>% mutate_at(grep('std',names(dfres),value=TRUE),reverse_std,orgn=10,ton=9)
+
+# We also need to write out the results to attach to paper 
+#write.csv2(dfres,file='~/projects/data/study1multiverse/results/2023-02-20_supplement_4_results.csv',row.names=FALSE)
+
+#Now we read this result file: (given same folder)
+dfres <- read.csv2(file='Supplement_4_results.csv')
+
+# We also need to write out the hyperparams (for all week4 datasets) 
+##hyperparam_df <- gdata_hyperparam(file.path(paste0('~/projects/data/study1multiverse/results/','study1')))
+#write.csv2(hyperparam_df,file = "~/projects/data/study1multiverse/results/2023-02-20_supp_3_allhyperparams.csv")
+```
+
+
+```{r doublecheck, eval=FALSE, include=FALSE}
+# Double check numbers 
+
+## Remove test patients. 
+prepped_all[!prepped_all$Patient %in% c(imputedraw_train$Patient,imputedraw_test$Patient),]
+
+```
+
+### Table 1 - supplement 
+
+```{r table1, eval=FALSE, warning=FALSE, include=FALSE}
+require(flextable)
+require(officer)
+require(dplyr)
+minimean <-function(x,decmean=2,decsd=0){
+  xr <- round(mean(x,na.rm=TRUE),decmean)
+  sd <- round(sd(x,na.rm=TRUE),decsd)
+  return(as.character(paste0(xr," (",sd,")")))
+}
+#symptom age, married etc, employment education 
+sumcat <- function(xin,whichcat,decp){
+  xin <- na.omit(xin)
+  xp <- plyr::count(xin)[plyr::count(xin)$x==whichcat,]$freq/length(xin)
+  xpraw <- plyr::count(xin)[plyr::count(xin)$x==whichcat,]$freq
+  xpo <- round(xp,decp)*100
+  return(paste0(xpraw," (",xpo," %)"))
+}
+dft1 <- outcomeraw %>% 
+filter(., Patient %in% imputed_all$Patient) %>%
+mutate(.,
+  Treatment = recode(Treatment,
+          "Depression STARTA EJ" = "Depression",
+          "Depression 2.0" = "Depression",
+          "Social fobi STARTA EJ" = "Social",
+          "Social fobi 2.0" = "Social",
+          "Paniksyndrom" = "Panic")) %>%
+  mutate(outcome = case_when(
+  Treatment == "Depression" ~ MADRS.1951_labelcont,
+  Treatment == "Social" ~ LSAS.2241_labelcont,
+  Treatment == "Panic" ~ PDSS.SR.3064_labelcont
+),symptomscore = case_when(
+  Treatment == "Depression" ~ MADRS.1951_PRE_sum,
+  Treatment == "Social" ~ LSAS.2241_PRE_sum,
+  Treatment == "Panic" ~ PDSS.SR.3064_PRE_sum
+),Employment = case_when(
+  GSNybesök.0_PRE_0_occupation == 1 ~ 1L,
+  GSNybesök.0_PRE_0_occupation == 2 ~ 2L,
+  GSNybesök.0_PRE_0_occupation == 3 ~ 3L,
+  Anamnes..ur.SCID..1827_SCREEN_1846_7 == 1 ~ 1L,
+  GSNybesök.0_PRE_0_ss.sickleave == 1 ~ 3L,
+  GSNybesök.0_PRE_0_ss.sickleavepart  == 1 ~ 3L,
+  GSNybesök.0_PRE_0_ss.dissicpens == 1 ~ 3L,
+  GSNybesök.0_PRE_0_ss.unemployed == 1 ~ 3L,
+  GSNybesök.0_PRE_0_ss.workfullt == 1 ~ 1L,
+  GSNybesök.0_PRE_0_ss.workpartt == 1 ~ 1L,
+  GSNybesök.0_PRE_0_ss.student == 1 ~ 2L,
+  GSNybesök.0_PRE_0_ss.senior == 1 ~ 3L,
+)) %>% 
+  #filter(., !is.na(outcome)) %>% 
+  rename(., 
+         "Marital" = "Anamnes..ur.SCID..1827_SCREEN_1833_2a",
+         "Education" = "Anamnes..ur.SCID..1827_SCREEN_1843_5",
+         "Age" = "age",
+         "Sex" = "sex") %>% 
+  mutate(., Marital = case_when(
+    Marital == "gift" ~ "Married",
+    Marital != "gift" ~ "Not married"
+  ),
+  Education = case_when( 
+    between(Education,1, 3) ~ "Primary",
+    between(Education,4, 6)~ "Secondary",
+    Education == 7 ~ "Postsecondary",
+    )) %>%
+  select(., Treatment,outcome,symptomscore,
+         Age,Sex,Employment,Education,Marital) %>%
+  mutate(Employment = factor(Employment),
+         Education = factor(Education,levels=c("Primary","Secondary","Postsecondary"))
+         )  %>%
+  mutate(Employment = recode(Employment,
+                             "1" = "Working",
+                             "2" = "Student",
+                             "3" = "Other"))
+dft1sum <- dft1 %>% group_by(Treatment) %>% 
+  summarize(n=n(),
+            Symptom=minimean(symptomscore),
+            Age = minimean(Age),
+            Female = sumcat(Sex,"F",2),
+            Married = sumcat(Marital,"Married",2),
+            Working = sumcat(Employment,"Working",2),
+            Student = sumcat(Employment,"Student",2),
+            Other = sumcat(Employment,"Other",2),
+            Primary = sumcat(Education,"Primary",2),
+            Secondary = sumcat(Education,"Secondary",2),
+            Postsecondary = sumcat(Education,"Postsecondary",2)
+            )
+dft1sumall <- dft1 %>% ungroup(.) %>% 
+  summarize(n=n(),
+            Symptom=minimean(symptomscore),
+            Age = minimean(Age),
+            Female = sumcat(Sex,"F",2),
+            Married = sumcat(Marital,"Married",2),
+            Working = sumcat(Employment,"Working",2),
+            Student = sumcat(Employment,"Student",2),
+            Other = sumcat(Employment,"Other",2),
+            Primary = sumcat(Education,"Primary",2),
+            Secondary = sumcat(Education,"Secondary",2),
+            Postsecondary = sumcat(Education,"Postsecondary",2)
+            ) %>% mutate(., Treatment = "Total",Symptom="-") %>% select(., Treatment,n:Postsecondary)
+dft1sumall <- rbind(dft1sum,dft1sumall)
+dft1flex <- data.frame(t(dft1sumall))[-1,]
+names(dft1flex) <- dft1sumall$Treatment
+dft1flexprep <- dft1flex %>% 
+  mutate(., 
+         " " =c("","","", "",
+                     "",rep("Employment status",3),
+                     rep("Education level",3)),
+         Measure = row.names(dft1flex)) %>% select(" ",Measure,Depression:Total)
+fd <- flextable(dft1flexprep)
+myft <- merge_v(fd,j=1)
+myftb <- myft %>% vline(i = 6:8,j=1, part = "body",border= fp_border(color="black",width=2)) 
+myftf <- fix_border_issues(myftb)
+myftf <- autofit(myftb)
+myftf <- add_footer_lines(myftf,values=c("Symptom are the primary symptom measure for each treatment before treatment start (PRE). MADRS-SR,PDSS-SR,LSAS-SR respectively"))
+myftf <- add_header_lines(myftf,values=c("Baseline characteristics","Table1"))
+#myftf
+save_as_docx(`Table X` = myftf, path = file.path(path_to_outputs,"table1.docx"))
+```
+
+
+### Inclusion data 
+
+```{r inclusion datas}
+inc <- outcomeraw %>% mutate(.,
+              Treatment = recode(Treatment,
+                     "Depression STARTA EJ" = "Depression",
+                     "Depression 2.0" = "Depression",
+                     "Social fobi STARTA EJ" = "Social",
+                     "Social fobi 2.0" = "Social",
+                     "Paniksyndrom" = "Panic"))
+inc$TreatmentAccessStart <- as.Date(inc$TreatmentAccessStart,
+                                    tryFormats = c("%Y-%m-%d")) 
+inc$TreatmentAccessEnd <- as.Date(inc$TreatmentAccessEnd,
+                                    tryFormats = c("%Y-%m-%d"))
+min(inc$TreatmentAccessStart)                
+max(inc$TreatmentAccessStart)
+max(inc$TreatmentAccessEnd)
+```
+
+
+### Regression model benchmark 
+```{r}
+RMSE <- function(fitted, true){
+  sqrt(mean((fitted - true)^2))
+}
+
+R2 <- function(fitted, true){
+ 1 - (sum((true - fitted)^2)/sum((true - mean(true))^2))
+}
+
+dfbr <- read_csv(
+  file.path("~/projects/data/study1multiverse/datasets/processed/study1/Handpicked/train/missfix",
+                           "2022-12-06_All_week04-imputed_benchmark.csv"))
+dfbr_test <- read_csv(
+  file.path("~/projects/data/study1multiverse/datasets/processed/study1/Handpicked/test/missfix",
+                           "2022-12-06_All_week04-imputed_benchmark.csv"))
+regb <- lm(outcome ~ sex+age+
+             `PDSS-SR-3064_SCREEN_sum`+
+             `MADRS-1951_SCREEN_sum` +
+             `LSAS-2241_SCREEN_sum` + 
+             mainsymptom_PRE_sum + 
+             mainsymptom_WEEK01_sum +
+             mainsymptom_WEEK02_sum +
+             mainsymptom_WEEK03_sum, data=dfbr)
+r2_tested <- R2(predict(regb,newdata=dfbr_test),dfbr_test$outcome)
+rmse_tested <- RMSE(predict(regb,newdata=dfbr_test),dfbr_test$outcome)
+
+require(apaTables)
+apa.reg.table(regb,filename=file.path(path_to_outputs,"supplement_benchmarkmodel.doc"))
+# shown in supplement 2 
+
+```
+
+## Figure 2 
+```{r make main result figure bacc "figure 2"}
+feat_away <- grep('^feat.*',names(dfres),value=TRUE,invert=TRUE)
+dfs <- dfres[feat_away]
+require(tidyr) 
+require(dplyr)
+require(ggplot2)
+require(ggsci)
+minidf <- dfs %>% filter(., Time == 'week04')
+minidf <- arrange(minidf, Method,b.acc)
+minidf %>% group_by(Method) %>% summarize(sum=mean(b.acc)) %>% arrange(., sum)
+
+t_df9_95cov = qt(0.975,9)
+
+# Assuming central distirbution t distirbution with n = 10 then we get from quantiles 0.975  = 2.262 with df = 9 
+minidf %>% group_by(Method) %>% 
+mutate(ymin = b.acc-t_df9_95cov*(b.acc_std/sqrt(10)),ymax=b.acc+t_df9_95cov*(b.acc_std/sqrt(10))) %>% 
+summarize(minofmin = min(ymin),maxofmax = max(ymax)) %>% 
+summarize(min(minofmin),max(maxofmax))
+
+baseplot <- ggplot(data=minidf, aes(x = reorder(Method, b.acc, sum), 
+                                      y = b.acc, 
+                                      color=PCA,
+                                      shape=Data_amount)) + 
+  geom_point(alpha=0.8,size=2,position=position_dodge2(width=.9))+
+  geom_errorbar(data=minidf,position=position_dodge2(),
+                mapping=aes(x=reorder(Method, b.acc, sum),
+                            ymin=b.acc-t_df9_95cov*(b.acc_std/sqrt(10)), 
+                            ymax=b.acc+t_df9_95cov*(b.acc_std/sqrt(10))),alpha=0.5) + 
+  scale_color_npg() +
+  labs(y="Balanced Accuracy",
+       x = 'Algorithm',
+       color="Data selection",
+       shape="Missing",
+       caption="Week4, 10-fold cross-validation")+
+  theme_minimal()+
+  theme(legend.position="bottom")+
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        text = element_text(size=12))+
+  scale_x_discrete(guide = guide_axis(n.dodge=2)) +
+  scale_y_continuous(breaks=seq(0.45,8,by=0.05),
+  limits=c(0.37,0.83))+
+  coord_cartesian(ylim=c(0.37, 0.83))+
+  facet_wrap(~Treatment,ncol=1) +
+  guides(col = guide_legend(ncol=2,override.aes = list(shape = 15)),
+         shape = guide_legend(ncol=1))+
+  scale_shape_discrete(labels=c("Impute", "Remove"))
+
+my_ggsave(baseplot,path_to_outputs,'bacc_',width=8.27,height=13.27)
+
+```
+
+## Overall predictive accuracy and benchmark comparisons
+### BACC per model 
+#### Table 2 
+```{r summary results for model performance}
+# Get the mean accuracy across models (or for benchmark point bacc )
+getsummary <- function(df,which,spec,treatment){
+  require(dplyr)
+  if(!missing(spec)){
+    getres <- dfres %>% 
+  filter(., Time == "week04",
+         PCA=='Benchmark',
+         Treatment==treatment,
+         Data_amount=='imputed',
+         Method==spec) %>%
+  select(., Treatment,Method,PCA,b.acc,b.acc_ho,
+         `r2`,r2_ho,
+         `mse`,mse_ho) %>% 
+      rename(., bacc_mean  = b.acc,
+             bacc_mean_ho= b.acc_ho,
+             r2_mean = `r2`,
+             r2_mean_ho = `r2_ho`,
+             mse_mean = `mse`,
+             mse_mean_ho = mse_ho)
+  }else{
+  getres<- df %>% 
+    filter(., Time == "week04",
+           PCA==which,
+           Treatment==treatment,
+           Data_amount=='imputed') %>%
+    select(., Treatment,Method,PCA,
+           b.acc,b.acc_ho,
+           `r2`,r2_ho,
+           mse,mse_ho) %>% 
+    summarize(bacc_mean = mean(b.acc),
+              bacc_sd = sqrt(var(b.acc)),
+              bacc_mean_ho = mean(b.acc_ho),
+              bacc_sd_ho = sqrt(var(b.acc_ho)),
+              r2_mean = mean(`r2`),
+              r2_mean_ho = mean(`r2_ho`),
+              r2_sd = sqrt(var(`r2`)),
+              r2_sd_ho = sqrt(var(`r2_ho`)),
+              mse_mean = mean(mse),
+              mse_sd = sqrt(var(mse)),
+              mse_mean_ho = mean(mse_ho),
+              mse_sd_ho = sqrt(var(mse_ho))
+              ) %>% 
+    mutate(., Treatment=treatment, Method="mean",PCA=which) %>% 
+    select(., Treatment,Method,PCA,everything(.))
+  }
+  return(getres)
+}
+
+lsum <- list()
+for(treatment in c('All','Depression','Panic','Social')){
+  for(pca in c("Handpicked","Benchmark")){
+      lsum[[paste0(pca,'_',treatment,"_sum")]]<- getsummary(dfres,pca,treatment=treatment)
+  }
+  lsum[[paste0("BenchLinear_",treatment,"_sum")]]<- getsummary(dfres,pca,spec="LinearRegression",treatment=treatment)
+  missingcols <- setdiff(colnames(lsum[[paste0('Handpicked','_',treatment,"_sum")]]),
+                       colnames(lsum[[paste0('BenchLinear','_',treatment,"_sum")]]))
+  lsum[[paste0('BenchLinear','_',treatment,"_sum")]][missingcols] <- NA
+}
+
+dfsummaryall <- data.frame(Reduce(rbind, lsum))
+
+# Table 2 
+dfsummaryall %>% filter(., PCA == 'Handpicked') %>% select(., Treatment,bacc_mean,bacc_sd,r2_mean,r2_sd) %>% mutate(bacc_mean=bacc_mean*100,bacc_sd=bacc_sd*100)%>% mutate_if(is.numeric,round,2)
+dfres %>% filter(., PCA == 'Handpicked',Data_amount=='imputed',Time=='week04',Method=='LinearRegression') %>% select(., Treatment, Data_shape_org)
+```
+
+```{r get overbest performing model for each grp (treatment) for each evals (specified)}
+getmymaxevals <- function(df,whateval){
+  if(paste0(whateval)=="mse"){
+    o <- df %>%
+  dplyr::group_by(Treatment) %>%
+    filter({{whateval}}==min({{ whateval }})) %>%
+     select(., Treatment, Time, Data_amount,Method,PCA,
+         {{ whateval }},
+         paste0(quo_name(enquo(whateval)),"_std"), paste0(quo_name(enquo(whateval)),"_ho"),
+         b.acc,b.acc_std,b.acc_ho,
+         r2,r2_std,r2_ho,mse,mse_std,mse_ho)
+  }else{
+   o <- df %>%
+  dplyr::group_by(Treatment) %>%
+    filter({{whateval}}==max({{ whateval }})) %>%
+     select(., Treatment, Time, Data_amount,Method,PCA,
+         {{ whateval }},
+         paste0(quo_name(enquo(whateval)),"_std"), paste0(quo_name(enquo(whateval)),"_ho"),
+         b.acc,b.acc_std,b.acc_ho,
+         r2,r2_std,r2_ho,mse,mse_std,mse_ho)
+  }
+   return(o)
+}
+lbesteval <- list()
+for(evalsmes in c('b.acc',"r2","mse")){
+ lbesteval[[paste0(evalsmes)]] <- getmymaxevals(dfres,rlang::sym(evalsmes))
+}
+dfsummaryallbest <-data.frame(Reduce(rbind, lbesteval))
+dfsummaryallbest_duprem <- dfsummaryallbest[!duplicated(dfsummaryallbest),]
+dfsummaryallbest_duprem %>% arrange(b.acc)
+```
+
+```{r overall best performing model by time and na-management}
+getmymaxevals_misstime <- function(df,whateval,time,missing){
+  if(paste0(whateval)=="mse"){
+    o <- df %>%
+  dplyr::group_by(Treatment) %>%
+      filter(., Time == time, Data_amount == missing) %>%
+    filter({{whateval}}==min({{ whateval }})) %>%
+     select(., Treatment, Time, Data_amount,Method,PCA,
+         {{ whateval }},
+         paste0(quo_name(enquo(whateval)),"_std"), paste0(quo_name(enquo(whateval)),"_ho"),
+         b.acc,b.acc_std,b.acc_ho,
+         r2,r2_std,r2_ho,mse,mse_std,mse_ho)
+  }else{
+   o <- df %>%
+  dplyr::group_by(Treatment) %>%
+      filter(., Time == time, Data_amount == missing) %>%
+    filter({{whateval}}==max({{ whateval }})) %>%
+     select(., Treatment, Time, Data_amount,Method,PCA,
+         {{ whateval }},
+         paste0(quo_name(enquo(whateval)),"_std"), paste0(quo_name(enquo(whateval)),"_ho"),
+         b.acc,b.acc_std,b.acc_ho,
+         r2,r2_std,r2_ho,mse,mse_std,mse_ho)
+  }
+   return(o)
+}
+lbestevaltimemiss <- list()
+for(evalsmes in c('b.acc',"r2","mse")){
+ lbestevaltimemiss[[paste0(evalsmes)]] <- getmymaxevals_misstime(dfres,rlang::sym(evalsmes),"pre","imputed")
+}
+dfsummaryallbest_time_miss <-data.frame(Reduce(rbind, lbestevaltimemiss))
+```
+
+## Overall predictive accuracy and benchmark comparisons: 
+```{r }
+getmymaxevals_misstime(dfres,rlang::sym('b.acc'),'week04','imputed') %>% print(n=10)
+
+# benchmark w linear reg 
+dfres %>% filter(., Time=='week04',PCA=='Benchmark',Treatment=='All',Method=='LinearRegression',Data_amount=='imputed') %>% select(., b.acc,b.acc_std,r2,r2_std)
+
+#mean balanced accuracy excluding linear reg 
+dfres %>% filter(., Method != 'LinearRegression',Time=='week04',PCA=='Benchmark',Treatment=='All',Data_amount=='imputed') %>% select(., b.acc,b.acc_std,r2,r2_std) %>%
+summarize(bmean = mean(b.acc),bmeansd = sd(b.acc),r2mean = mean(r2),r2sd=sd(r2))
+
+# handpicked linear reg instead of benchmark  
+dfres %>% filter(., Time=='week04',PCA=='Handpicked',Treatment=='All',Method=='LinearRegression',Data_amount=='imputed') %>% select(., b.acc,b.acc_std,r2,r2_std)
+
+```
+
+## Predictive accuracy dependent on variable selection, missing management, and algorithms 
+
+### Variable selection 
+```{r}
+# Graph this with confidence intervals 
+var_select_data <- dfres %>% rename('Variable selection'=PCA) %>% group_by(`Variable selection`) %>% filter(., Time=='week04') %>% 
+summarize(., mean_b = mean(b.acc)*100, 
+sd_b = sd(b.acc)*100,
+se = sd_b/sqrt(length(.)),
+tval = qt(0.975,df=length(.)-1))
+print(var_select_data)
+
+dfres %>% group_by(Method) %>% filter(., Time=='week04',PCA=='Kernel') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+dfres %>% filter(., Time=='week04',PCA=='Kernel',Method != 'Lasso',Method!='ElasticNet') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+# Add graph 
+data_summary_plot <- function(x) {
+   m <- mean(x)
+   sd_m <- sd(x)
+   se <- sd_m/sqrt(length(x))
+   tval = qt(0.975,df=length(x)-1)
+   return(c(y=m,ymin=m-tval*se,ymax=m+tval*se))
+}
+p <- dfres %>% filter(Time=='week04') %>% ggplot(., aes(x=PCA, y=b.acc,fill=PCA)) + 
+    geom_violin(trim=FALSE) + 
+    theme_minimal() +  theme(legend.position="none") + labs(x='Variable selection',y='Balanced accuracy') +
+    stat_summary(fun.data=data_summary_plot) +
+    scale_fill_npg()+
+    scale_y_continuous(breaks=seq(0.35,85,by=0.05),limits=c(0.30,0.85))
+ggsave(p,file='./graphs/test2.png',bg='white',width=7,height=6)
+
+my_ggsave(p,path_to_outputs,'bacc_var_select_',width=7,height=6)
+
+# compare to discrepancy between PCA early in treatment: 
+dfres %>% rename('Variable selection'=PCA) %>% group_by(`Variable selection`) %>% filter(., Time=='pre') %>% 
+summarize(., mean_b = mean(b.acc)*100, 
+sd_b = sd(b.acc)*100,
+se = sd_b/sqrt(length(.)),
+tval = qt(0.975,df=length(.)-1))
+
+```
+
+### Handling missing data 
+```{r}
+dfres %>% group_by(Data_amount) %>% summarize(., mean_b = round(mean(b.acc)*100,3),sd_b = round(sd(b.acc)*100,3))
+
+mean(dfres[dfres$Data_amount=='imputed','b.acc'][[1]]);mean(dfres[dfres$Data_amount=='naremove','b.acc'][[1]])
+
+# diff between missing removal 
+impdfres <- dfres[dfres$Data_amount=='imputed',] %>% arrange(PCA,Method,Treatment,Time) %>% pull(b.acc)
+nardfres <- dfres[dfres$Data_amount=='naremove',] %>% arrange(PCA,Method,Treatment,Time) %>% pull(b.acc)
+cx = ((var(impdfres)/length(impdfres))/((var(impdfres)/length(impdfres))+(var(nardfres)/length(nardfres))))
+cy = 1-cx 
+df_sc = (length(impdfres)-1)*(length(nardfres)-1)/((length(impdfres)-1)*cy^2+(length(nardfres)-1)*cx^2)
+m_d <- mean(impdfres-nardfres)
+se_m_d <- sqrt(var(impdfres)/length(impdfres)+var(nardfres)/length(nardfres))
+tval <- qt(0.975,df=df_sc)
+print(paste(round(m_d-tval*se_m_d,8)*100,round(m_d,8)*100,round(m_d+tval*se_m_d,8)*100))
+t_m_d <- t.test(formula = b.acc~Data_amount,data=dfres)
+t_m_d$conf.int
+
+# Data loss 
+shaperows_r <- sub("\\(","",sub(",.*", "", dfres$Data_shape_org))
+shaperows_n <- as.numeric(shaperows_r)
+
+dfres$npat <- shaperows_n 
+npat_imp <- dfres[dfres$Data_amount=='imputed',] %>% arrange(PCA,Method,Treatment,Time) %>% pull(npat)
+npat_re <- dfres[dfres$Data_amount=='naremove',] %>% arrange(PCA,Method,Treatment,Time) %>% pull(npat)
+#npat_imp <- dfres[dfres$Data_amount=='imputed','npat'][[1]]
+#npat_re <- dfres[dfres$Data_amount=='naremove','npat'][[1]]
+dif_perc <- round((1-(npat_re/npat_imp))*100,3) # reversing data retainment % to get data loss in % 
+npatboth <- cbind(npat_imp,npat_re,dif_perc)
+psych::describe(dif_perc)
+
+# biggest decrease 
+biggestdec <- dfres %>% group_by(Data_amount,Time) %>% summarize(baccmean = mean(b.acc),baccsd = sd(b.acc)) 
+biggestdec_npat <- dfres %>% group_by(Data_amount,Time) %>% summarize(npatmean = mean(npat),npatsd = sd(npat)) 
+round(diff(biggestdec$baccmean*100,lag=6),2)
+diff(biggestdec_npat$npatmean,lag=6)
+
+dfres %>% filter(., Time=='week04') %>% group_by(Data_amount) %>% summarize(baccmean = mean(b.acc),baccsd = sd(b.acc)) 
+```
+
+### Algorithm 
+```{r}
+#graph this (algorithm) - variation based on treatment, var selection. 4*3 = 12 
+dfres %>% group_by(Method) %>% filter(., Treatment!='All',Data_amount=='imputed',Time=='week04') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+dfres %>% filter(., Treatment!='All',Data_amount=='imputed',Time=='week04') %>% 
+ggplot(., aes(x = reorder(Method, b.acc, sum), y = b.acc)) + 
+stat_summary(fun.data=data_summary_plot,geom='errorbar',width=0.2) + 
+stat_summary(fun.data=data_summary_plot,geom='point')+
+geom_hline(yintercept=0.67, linetype="dashed",alpha=0.8)+
+  scale_color_npg() +
+  labs(y="Balanced Accuracy",
+       x = 'Algorithm')+
+  theme_minimal()+
+  scale_x_discrete(guide = guide_axis(n.dodge=2))+ 
+  scale_y_continuous(breaks=seq(0.45,8,by=0.05),
+  limits=c(0.43,0.8)) -> mplot_algo 
+ggsave(mplot_algo,file='./graphs/test3.png',bg='white')
+
+my_ggsave(mplot_algo,path_to_outputs,name='bacc_alg_',width=7,height=5)
+
+
+# write this: 
+# org 
+dfres %>% group_by(Method) %>% filter(., Treatment!='All',Data_amount=='imputed',Time=='week04') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+# diff 
+dfres %>% group_by(Method) %>% filter(., PCA != 'Linear',PCA!='Kernel',Treatment!='All',Data_amount=='imputed',Time=='week04') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+dfres %>% filter(., Time=='week04',PCA=='Kernel',Method != 'Lasso',Method!='ElasticNet') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+```
+
+
+### Sensitivity analyses 
+```{r}
+# increased over time 
+dfres %>% filter(., Method=='RF',Treatment=='All',PCA=='Handpicked',Data_amount=='imputed') %>% 
+select(., Time,b.acc,b.acc_std,b.acc_ho) %>% mutate_at(vars(matches("b.acc")),.funs=function(x){x*100}) %>% arrange(., Time)
+# diff cross validation o holdout 
+dfres %>% mutate(diff = (b.acc - b.acc_ho)*100) %>% summarize(m = mean(diff),s_d = sd(diff),se = sd(diff)/sqrt(nrow(.)))
+dfres %>% summarize(m = mean(b.acc),s_d = sd(b.acc),m_ho = mean(b.acc_ho),s_d_ho = sd(b.acc_ho)) %>% mutate_all( .funs=function(x){x*100})
+
+#discussion check over time across treatment groups 
+dfres %>% group_by(Treatment) %>% filter(., Method=='RF',PCA=='Handpicked',Data_amount=='imputed') %>% 
+select(., Time,b.acc,b.acc_std,b.acc_ho) %>% mutate_at(vars(matches("b.acc")),.funs=function(x){x*100}) %>% arrange(., Time) %>% filter(., b.acc >= 67)
+```
+
+### Synthesis recommendation graph 
+```{r}
+# We have impute data, choose latest possible timepoint, random forest and handpicked variables. 
+dfres %>% 
+filter(., Data_amount=='imputed',Time=='week04',Method=='RF',PCA=='Handpicked')  %>% select(Treatment,b.acc)
+
+t_df9_95cov = qt(0.975,9)
+
+melt_plot <- dfres %>% filter(., Data_amount=='imputed',Time=='week04',Method=='RF',PCA=='Handpicked') %>% 
+select(., Treatment,b.acc,b.acc_ho,b.acc_std) %>% rename('CV'=b.acc,'HO'=b.acc_ho) %>% 
+pivot_longer(cols=c('CV','HO'),names_to='Testing',values_to='b.acc') %>%
+mutate(b.acc_std = ifelse(Testing=='CV',b.acc_std,NA))
+
+ggplot(melt_plot, aes(x = reorder(Treatment, b.acc,sum), y = b.acc,fill=Testing,shape=Testing)) +
+geom_errorbar(data=melt_plot,size=0.8,
+mapping=aes(x = reorder(Treatment, b.acc,sum),
+ymin=b.acc-t_df9_95cov*(b.acc_std/sqrt(10)), 
+ymax=b.acc+t_df9_95cov*(b.acc_std/sqrt(10))),alpha=0.8,width=0.2)+ 
+geom_point(size=4) + 
+geom_hline(yintercept=0.67, linetype="dashed")+
+  labs(y="Balanced Accuracy",
+       x = 'Treatment')+
+  theme_minimal()+
+  theme(legend.position="bottom")+
+  scale_fill_manual(values=c("#8491B4FF", "#F39B7FFF")) +
+  scale_shape_manual(values=c(22,23))+
+  scale_size_continuous(guide = "none")+
+  scale_y_continuous(breaks=seq(0.65,.85,by=0.05),
+  limits=c(0.65,0.85)) -> mplot_rec
+ggsave(mplot_rec,file='./graphs/test3.png',bg='white')
+
+my_ggsave(mplot_rec,path_to_outputs,name='Rec_graph_',height=6,width=6)
+
+```
+
+### Discussion 
+
+```{r}
+dfres %>% filter(., PCA == 'Handpicked',Time=='week04',Data_amount=='imputed',Treatment=='All',Method!='LinearRegression') %>%
+summarize(meanb = mean(b.acc),sd=sd(b.acc))
+
+dfres %>% filter(., PCA == 'Benchmark',Data_amount=='imputed',Time=='week04',Treatment=='All',Method=='LinearRegression') %>% select(b.acc)
+
+# surpass the mean 
+dfres %>% group_by(Method) %>% filter(.,Data_amount=='imputed',Time=='week04') %>% summarize(., mean_b = mean(b.acc)*100,sd_b = sd(b.acc)*100)
+
+# top accuracies 
+dfres %>% group_by(Method) %>% 
+filter(., Data_amount == 'imputed',Treatment=='All',Time=='week04',PCA=='Handpicked') %>%
+select(., b.acc,b.acc_std)
+
+dfres %>% group_by(Method) %>% 
+filter(., Data_amount == 'imputed',Treatment=='All',Time=='week04',PCA=='Benchmark') %>%
+select(., b.acc,b.acc_std)
+
+```
+
+
+### Supplement 
+
+```{r}
+### RF over time 
+minidf_suppl <- dfres %>% filter(.,PCA=='Handpicked',Method=='RF')
+minidf_suppl <- arrange(minidf_suppl, Time,b.acc)
+t_df9_95cov = qt(0.975,9)
+
+
+RF_over_time <- ggplot(data=minidf_suppl, aes(x = Time, 
+                                      y = b.acc, 
+                                      color=Treatment,
+                                      shape=Data_amount)) + 
+  geom_point(size=3,position=position_dodge(0.7))+
+  geom_errorbar(data=minidf_suppl,position=position_dodge(0.7),
+                mapping=aes(x = Time,
+                            ymin=b.acc-t_df9_95cov*(b.acc_std/sqrt(10)), 
+                            ymax=b.acc+t_df9_95cov*(b.acc_std/sqrt(10))),alpha=0.5) + 
+  scale_color_npg() +
+  labs(y="Balanced Accuracy",
+       x = 'Timepoint',
+       color="Treatment",
+       shape="Missing",
+       caption="Handpicked dataset, Random forest")+
+  theme_minimal()+
+  geom_hline(yintercept=0.67, linetype="dashed")+
+  theme(legend.position="bottom")+
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        text = element_text(size=12))+
+  scale_x_discrete(labels=c('Screen','Pre','Week 1','Week 2','Week 3','Week 4')) +
+  scale_y_continuous(breaks=seq(0.45,8,by=0.05),
+  limits=c(0.45,0.83))+
+  coord_cartesian(ylim=c(0.37, 0.83))+
+  guides(col = guide_legend(ncol=2,override.aes = list(shape = 15)),
+         shape = guide_legend(ncol=1))+
+  scale_shape_discrete(labels=c("Impute", "Remove"))
+
+ggsave(RF_over_time,file='./graphs/test5.png',bg='white')
+         
+my_ggsave(RF_over_time,path_to_outputs,name='RF_suppl_graph_',height=7,width=7)
+
+# Accuracy over time in numbers 
+time_pre <- dfres%>% filter(., Time=='pre',Data_amount=='imputed')
+lbesteval_time_pre <- list()
+for(evalsmes in c('b.acc')){
+ lbesteval_time_pre[[paste0(evalsmes)]] <- getmymaxevals(time_pre,rlang::sym(evalsmes))
+}
+dfsummaryallbest_pre <-data.frame(Reduce(rbind, lbesteval_time_pre))
+dfsummaryallbest_pre_no_dup <- dfsummaryallbest_pre[!duplicated(dfsummaryallbest_pre),]
+dfsummaryallbest_pre_no_dup %>% arrange(b.acc) %>% mutate_if(is.numeric,function(x){round(x*100,2)})
+```
+
