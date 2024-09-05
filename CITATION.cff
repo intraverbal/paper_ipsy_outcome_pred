@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Hentati Isacsson
+    given-names: Nils
+    orcid: https://orcid.org/0000-0002-5749-5310
+title: "Software for Methodological choices and clinical usefulness for machine learning predictions of outcome in Internet-based cognitive behavioral therapy"
+version: 1.0.0
+date-released: 2024-04-15
